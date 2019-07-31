@@ -99,7 +99,7 @@ function EchoFieldsHeader($res, $numfields)
         $str .= GetBlock($finfo['name']);
         $str .= GetBlock($finfo['table']);
         // 与现有的类型不一致，需要优化
-        $type = strtotime($finfo['native_type']);
+        $type = strtolower($finfo['native_type']);
         // php官方说 len 除了浮点型外，都是-1
         $length = $finfo['len'];
         switch ($type) {
@@ -209,6 +209,7 @@ if (phpversion_int() < 40010) {
     $_POST = &$HTTP_POST_VARS;
 }
 
+$testMenu = false;
 if (!isset($_POST["actn"]) || !isset($_POST["host"]) || !isset($_POST["port"]) || !isset($_POST["login"])) {
     $testMenu = $allowTestMenu;
     if (!$testMenu) {
@@ -219,7 +220,7 @@ if (!isset($_POST["actn"]) || !isset($_POST["host"]) || !isset($_POST["port"]) |
 }
 
 if (!$testMenu) {
-    if ($_POST["encodeBase64"] == '1') {
+    if (isset($_POST["encodeBase64"]) && $_POST["encodeBase64"] == '1') {
         for ($i = 0; $i < count($_POST["q"]); $i++)
             $_POST["q"][$i] = base64_decode($_POST["q"][$i]);
     }
@@ -237,30 +238,30 @@ if (!$testMenu) {
         exit();
     }
 
-    $errno_c = 0;
+    $errno = 0;
     $hs = $_POST["host"];
 
     try {
         $conn = new PDO("mysql:host=$hs;port={$_POST['port']}", $_POST["login"], $_POST["password"]);
     } catch (PDOException $e) {
-        $errno_c = $e->getCode();
-        $errno = $e->getMessage();
+        $errno = $e->getCode();
+        $error = $e->getMessage();
     }
-    if ($errno_c > 0) {
-        EchoHeader($errno_c);
-        echo GetBlock($errno);
+    if ($errno > 0) {
+        EchoHeader($errno);
+        echo GetBlock($error);
         exit;
     }
 
-    if (($errno_c <= 0) && ($_POST["db"] != "")) {
+    if (($errno <= 0) && ($_POST["db"] != "")) {
         $conn->exec('use ' . $_POST["db"]);
-        $errno_c = $conn->errorCode();
-        if ($errno_c > 0) {
+        $errno = $conn->errorCode();
+        if ($errno > 0) {
             echo GetBlock($conn->errorInfo());
         }
     }
 
-    EchoHeader($errno_c);
+    EchoHeader($errno);
     if ($_POST["actn"] == "C") {
         EchoConnInfo($conn);
     } elseif ($_POST["actn"] == "Q") {
@@ -272,28 +273,25 @@ if (!$testMenu) {
                     $query = stripslashes($query);
             }
 
-            if (in_array(strtolower(trim(strstr($query, ' ', true))), ['select', 'show', 'describe', 'explain'])) {
-                $res = $conn->query($query);
-                $errno = $res->errorCode();
-                $error = $res->errorInfo();
+            $res = $conn->prepare($query);
+            if ($res->execute()) {
                 $numfields = $res->columnCount();
                 $numrows = $res->rowCount();
-                $affectedrows = 0;
-                $insertid = 0;
-            } else {
-                $res = false;
-                $affectedrows = $conn->exec($query);
+                $affectedrows = $numrows;
                 $insertid = $conn->lastInsertId();
-                $errno = $conn->errorCode();
-                $error = $conn->errorInfo();
-                $numfields = 0;
-                $numrows = 0;
+                $errno = 0;
+                $error = '';
+            } else {
+                $errorInfo = $res->errorInfo();
+                $errno = $errorInfo[1];
+                $error = $errorInfo[2];
+                $numfields = $numrows = $affectedrows = $insertid = 0;
             }
 
             EchoResultSetHeader($errno, $affectedrows, $insertid, $numfields, $numrows);
-            if ($errno > 0)
+            if ($errno > 0) {
                 echo GetBlock($error);
-            else {
+            } else {
                 if ($numfields > 0) {
                     EchoFieldsHeader($res, $numfields);
                     EchoData($res);

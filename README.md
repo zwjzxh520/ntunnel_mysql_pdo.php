@@ -16,6 +16,7 @@ $length = $finfo['len'];
 ```
 1. 列的元数据中，类型不一致
 2. 列的元数据中，len长度不一致
+3. 未找到PDO中替代mysqli_info()的办法
 
 
 欢迎大家提交 pull requests
